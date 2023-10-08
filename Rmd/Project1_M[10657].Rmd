@@ -1,0 +1,153 @@
+---
+title: "Project1"
+author: "Meraj"
+date: "2023-10-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+# Load libraries
+suppressPackageStartupMessages(library(tidyverse))
+library(gridExtra)
+```
+
+
+## 1.	
+
+How many breweries are present in each state?
+
+```{r}
+beers = read.csv("https://github.com/BivinSadler/MSDS_6306_Doing-Data-Science/raw/Master/Unit%208%20and%209%20Case%20Study%201/Beers.csv", header = TRUE, stringsAsFactors =  TRUE)
+breweries = read.csv("https://github.com/BivinSadler/MSDS_6306_Doing-Data-Science/raw/Master/Unit%208%20and%209%20Case%20Study%201/Breweries.csv", header = TRUE, stringsAsFactors = TRUE)
+
+
+# Group data by state
+breweries_by_state <- breweries %>%
+  group_by(State) %>%
+  summarize(Count = n()) %>% # count how many breweries are present in each state
+  arrange(desc(Count)) # Sort the grouped data by Count
+
+breweries_by_state
+
+breweries %>% ggplot(aes(x = State, fill = State)) + geom_bar() + ggtitle("Count of Breweries in Each State") + ylab("Count of Breweries") + ggthemes::theme_economist() + guides(fill = FALSE)
+
+```
+
+
+## 2.	
+
+Merge beer data with the breweries data. Print the first 6 observations and the last six observations to check the merged file.  (RMD only, this does not need to be included in the presentation or the deck.)
+
+```{r}
+
+beers = beers %>% rename(BeerName = Name, Brew_ID = Brewery_id)
+breweries = breweries %>% rename(BreweryName = Name)
+
+# Merge
+beers_breweries = left_join(beers, breweries, by = "Brew_ID")
+
+# First 6 obs
+head(beers_breweries, 6)
+
+# Last 6 obs
+tail(beers_breweries, 6)
+```
+
+## 3.	
+
+Address the missing values in each column
+
+```{r}
+# Check missing values in each column
+missing_values <- sapply(beers_breweries, function(x) sum(is.na(x)))
+
+missing_values
+```
+
+## 4.	
+
+Compute the median alcohol content and international bitterness unit for each state. Plot a bar chart to compare. 
+
+```{r warning=FALSE}
+# Group the data by State then calculate the medians
+medians_AB <- beers_breweries %>%
+  group_by(State) %>%
+  summarize(median_alc = median(ABV, na.rm = TRUE),
+            median_bitter = median(IBU, na.rm = TRUE)) 
+
+head(medians_AB)
+bar1 <- ggplot(data = medians_AB, aes(x = State, y = median_alc)) +
+  geom_bar(stat = "identity")
+
+bar2 <- ggplot(data = medians_AB, aes(x = State, y = median_bitter)) +
+  geom_bar(stat = "identity")
+
+grid.arrange(bar1, bar2, ncol=2)
+
+```
+
+## 5.	
+
+Which state has the maximum alcoholic (ABV) beer? Which state has the most bitter (IBU) beer?
+
+```{r warning=FALSE}
+# Group the data by State then calculate the maximum 
+max_AB <- beers_breweries %>%
+  group_by(State) %>%
+  summarize(max_alc = max(ABV, na.rm = TRUE),
+            max_bitter = max(IBU, na.rm = TRUE)) 
+
+# ABV
+max_AB[which(max_AB$max_alc == max(max_AB$max_alc)), "State"]
+
+# IBU
+max_AB[which(max_AB$max_bitter == max(max_AB$max_bitter, na.rm = TRUE)), "State"]
+```
+
+## 6.	
+
+Comment on the summary statistics and distribution of the ABV variable.
+
+```{r}
+summary(beers_breweries$ABV)
+
+ggplot(data = beers_breweries, aes(x = ABV)) +
+  geom_histogram(bins = 30, fill = "lightblue", color = "black") +
+  labs(title = "Histogram of ABV",
+       x = "ABV",
+       y = "Frequency")
+
+boxplot(beers_breweries$ABV, main="Box Plot of ABV", ylab="Values")
+```
+
+
+## 7.	
+
+Is there an apparent relationship between the bitterness of the beer and its alcoholic content? Draw a scatter plot.  Make your best judgment of a relationship and EXPLAIN your answer.
+
+```{r}
+ggplot(data = beers_breweries)+
+  geom_point(mapping = aes(x = ABV, y = IBU)) +
+  labs(title = "Scatter plot of ABV vs IBU",
+       x = "ABV",
+       y = "IBU")
+
+# Correlation
+beers_breweries_complete <- beers_breweries[complete.cases(beers_breweries),]
+cor(x = beers_breweries_complete$ABV, y = beers_breweries_complete$IBU)
+```
+
+## 8.	
+
+Budweiser would also like to investigate the difference with respect to IBU and ABV between IPAs (India Pale Ales) and other types of Ale (any beer with “Ale” in its name other than IPA).  You decide to use KNN classification to investigate this relationship.  Provide statistical evidence one way or the other. You can of course assume your audience is comfortable with percentages … KNN is very easy to understand conceptually. 
+In addition, while you have decided to use KNN to investigate this relationship (KNN is required) you may also feel free to supplement your response to this question with any other methods or techniques you have learned.  Creativity and alternative solutions are always encouraged.  
+
+```{r}
+
+```
+
