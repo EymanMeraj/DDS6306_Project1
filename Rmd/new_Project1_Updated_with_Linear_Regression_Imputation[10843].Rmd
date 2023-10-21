@@ -1,0 +1,420 @@
+---
+title: "Project1"
+author: "Meraj"
+date: "2023-10-06"
+last update: "2023-10-9"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+# Load libraries
+library(tidyverse)
+library(gridExtra)
+library(ggplot2)
+#library(plotly)
+#install.packages("stats")
+library(stats)
+```
+
+
+## 1.	
+
+How many breweries are present in each state?
+Answer: Please refer to the graph below on the answer to this question. We can see the top 3 states with the most breweries is Colorado (47), California (39) and Michigan (32).
+
+```{r}
+
+beers = read.csv("https://github.com/EymanMeraj/DDS6306_Project1/raw/main/Beers.csv", header = TRUE, stringsAsFactors =  TRUE)
+breweries = read.csv("https://github.com/EymanMeraj/DDS6306_Project1/raw/main/Breweries.csv", header = TRUE, stringsAsFactors = TRUE)
+
+
+# Group data by state
+breweries_by_state <- breweries %>%
+  group_by(State) %>%
+  summarize(Count = n()) %>% # count how many breweries are present in each state
+  arrange(desc(Count)) # Sort the grouped data by Count
+
+breweries_by_state
+
+#breweries %>% ggplot(aes(x = State, fill = State)) + geom_bar() + ggtitle("Count of Breweries in Each State") + ylab("Count of Breweries") + ggthemes::theme_economist() + guides(fill = FALSE)
+
+#Create a bar plot to show the total number of breweries in each state
+breweries %>%
+  select(State)%>%
+  ggplot(aes(x=reorder(State,State,function(x)-length(x)), fill = State))+
+  geom_bar()+
+  ggtitle("Total Number of Breweries in Each State")+
+  xlab("Stat")+
+  geom_text(stat='count', aes(label=..count..), vjust=-0.5) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 5.5)) +
+  guides(fill = FALSE) 
+
+
+```
+
+
+## 2.	
+
+Merge beer data with the breweries data. Print the first 6 observations and the last six observations to check the merged file.  (RMD only, this does not need to be included in the presentation or the deck.)
+
+```{r}
+
+beers = beers %>% rename(BeerName = Name, Brew_ID = Brewery_id)
+breweries = breweries %>% rename(BreweryName = Name)
+
+# Merge
+beers_breweries = left_join(beers, breweries, by = "Brew_ID")
+
+# First 6 obs
+head(beers_breweries, 6)
+
+# Last 6 obs
+tail(beers_breweries, 6)
+```
+
+## 3.	
+
+Address the missing values in each column
+answer: We can see that there are 62 missing values in ABV and 1005 missing values in IBU. There are also 5 missing values in Style which are blank. 
+
+```{r}
+# Change the blank values in Style to NA
+beers_breweries[beers_breweries$Style == "", "Style"] <- NA
+
+# Check missing values in each column
+missing_values <- sapply(beers_breweries, function(x) sum(is.na(x)))
+missing_values
+
+
+## Impute data with Linear Regression
+
+# Standardize ABV
+beers_breweries$ABV_Standard <- (beers_breweries$ABV - mean(beers_breweries$ABV, na.rm = TRUE))/sd(beers_breweries$ABV, na.rm = TRUE)
+
+#Set variable for the missing data
+missing_data = beers_breweries[is.na(beers_breweries$IBU), ]
+
+# Fit a linear regression model
+model = lm(IBU ~ ABV_Standard, data = beers_breweries)
+
+# Calculate estimated IBU for missing data
+missing_data$Estimated_IBU = predict(model, missing_data)
+# check if there are any negative values in estimated IBU
+sum(missing_data$Estimated_IBU < 0, na.rm = TRUE) 
+missing_data[which(missing_data$Estimated_IBU < 0), ] # this is caused by extreme value of ABV(0.001)
+# Set the estimated IBU for this obs as 0(or remove it)
+missing_data[which(missing_data$Estimated_IBU < 0), "Estimated_IBU"] = 0
+# Round the estimated IBU to the nearest integer
+missing_data$Estimated_IBU <- round(missing_data$Estimated_IBU)
+ 
+#calculating the values that are missing ABV and IBU data
+missing_abv = beers_breweries[is.na(beers_breweries$ABV),]
+nrow(missing_abv)/nrow(beers_breweries)
+#we have 2.57% of data missing both, data is MCAR, throwing out
+
+
+#Filling in the missing IBU data from the estimated values.
+beers_breweries$IBU[is.na(beers_breweries$IBU)] = missing_data$Estimated_IBU[is.na(missing_data$IBU)]
+
+
+#removing the missing ABV and IBU data as it is 2.57% of data and should cause minimal impact to the analysis
+beers_breweries = beers_breweries %>% filter(!is.na(beers_breweries$ABV))
+
+
+#print the summary and dataset
+summary(beers_breweries)
+
+#beers_breweries 
+```
+
+
+## 4.	
+
+Compute the median alcohol content and international bitterness unit for each state. Plot a bar chart to compare. 
+Answer - Washington DC and Kentucky have the Highest ABV at 6.25%
+Answer - Utah has the Lowest ABV at 4%
+Answer - West Virginia has the Highest IBU at 57.5
+Answer - Kansas has the Lowest IBU at 22
+
+```{r warning=FALSE}
+
+#Compute Median of ABV by State
+beers_breweries %>%
+  filter(!is.na(ABV))%>%
+  group_by(State)%>%
+  summarize(MedianABV = median(ABV))%>%
+  arrange(desc(MedianABV))%>%
+  print(n=50)
+
+#Compute Median of IBU by State
+beers_breweries %>%
+  filter(!is.na(IBU))%>%
+  group_by(State)%>%
+  summarize(MedianIBU = median(IBU))%>%
+  arrange(desc(MedianIBU))%>%
+  print(n=50)
+
+#Create bar chart of median ABV for each State
+beers_breweries %>%
+  filter(!is.na(ABV))%>%
+  group_by(State)%>%
+  summarize(MedianABV = median(ABV))%>%
+  ggplot(aes(x=reorder(State,-MedianABV), y = MedianABV, fill=State))+
+  geom_bar(stat="identity")+
+  xlab("State")+
+  ggtitle("Bar Chart Distribution of Median ABV by State") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 5.5)) +
+  guides(fill = FALSE)
+  
+#Create bar chart of median IBU for each State
+beers_breweries %>%
+  filter(!is.na(IBU))%>%
+  group_by(State)%>%
+  summarize(MedianIBU = median(IBU))%>%
+  ggplot(aes(x=reorder(State,-MedianIBU), y = MedianIBU, fill=State))+
+  geom_bar(stat="identity")+
+  xlab("State")+
+  ggtitle("Bar Chart Distribution of Median IBU by State") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 5.5)) +
+  guides(fill = FALSE)
+
+```
+
+## 5.	
+
+Which state has the maximum alcoholic (ABV) beer? Which state has the most bitter (IBU) beer?
+Answer - We have the maximum alcoholic beer in Boulder, Colorado. Which is the Lee Hill Series Vol. 5 - Belgian Style Quadrupel Ale @ 0.128ABV (NA IBU = 35)
+Answer - And the most bitter beer in Astoria, Oregon. Which is the Bitter Bitch Imperial IPA @ 138IBU
+
+```{r warning=FALSE}
+
+#Scatter Plot to compute highest ABV
+beers_breweries %>%
+  filter(!is.na(ABV))%>%
+  group_by(State)%>%
+  summarize(MaxABV = max(ABV))%>%
+  ggplot(aes(x=reorder(State,-MaxABV), y = MaxABV, color=State))+
+  geom_text(aes(label=State),hjust=0, vjust=0)+
+  geom_point()+
+  xlab("State")+
+  ggtitle("Scatter Plot of Max ABV by State")+
+  theme_gray() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 5.5)) +
+  guides(fill = FALSE)
+
+  #using plotly to be able to hover over the plot
+#p=beers_breweries %>%
+#  filter(!is.na(ABV))%>%
+#  group_by(State)%>%
+#  summarize(MaxABV = max(ABV))%>%
+#  ggplot(aes(x=reorder(State,-MaxABV), y = MaxABV, color=State))+
+#  geom_text(aes(label=State),hjust=0, vjust=0)+
+#  geom_point()+
+#  xlab("State")+
+#  ggtitle("Scatter Plot of Max ABV by State")+
+#  theme_gray()
+#ggplotly(p)
+
+#What value is the MAX ABV for Colorado?
+coloradodf = beers_breweries %>% filter(State == " CO")
+coloradodf = coloradodf[order(coloradodf$ABV, decreasing=TRUE),]
+head(coloradodf,1)
+
+
+#Scatter Plot to compute highest IBU
+beers_breweries %>%
+  filter(!is.na(IBU))%>%
+  group_by(State)%>%
+  summarize(MaxIBU = max(IBU))%>%
+  ggplot(aes(x=reorder(State,-MaxIBU), y = MaxIBU, color=State))+
+  geom_text(aes(label=State),hjust=0, vjust=0)+
+  geom_point()+
+  xlab("State")+
+  ggtitle("Scatter Plot of Max IBU by State")+
+  theme_gray() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 5.5)) +
+  guides(fill = FALSE)
+
+
+
+  #using plotly to be able to hover over the plot
+#p=beers_breweries %>%
+#  filter(!is.na(IBU))%>%
+#  group_by(State)%>%
+#  summarize(MaxIBU = max(IBU))%>%
+#  ggplot(aes(x=reorder(State,-MaxIBU), y = MaxIBU, color=State))+
+#  geom_text(aes(label=State),hjust=0, vjust=0)+
+#  geom_point()+
+#  xlab("State")+
+#  ggtitle("Scatter Plot of Max IBU by State")+
+#  theme_gray()
+#ggplotly(p)
+
+#What value is the MAX IBU for Oregon?
+oregondf = beers_breweries %>% filter(State == " OR")
+oregondf = oregondf[order(oregondf$IBU, decreasing=TRUE),]
+head(oregondf,1)
+
+```
+
+## 6.	
+
+Comment on the summary statistics and distribution of the ABV variable.
+Answer - we have a (slightly) right skewed histogram because the mean is greater than the median
+
+```{r}
+####summary(beers_breweries$ABV)
+beers_breweries%>%
+  filter(!is.na(ABV))%>%
+  summarize(MeanABV = mean(ABV), SDABV = sd(ABV), MedianABV = median(ABV), MaxABV = max(ABV), MinABV = min(ABV), Q1 = quantile(ABV,0.25), Q3 = quantile(ABV,0.75), Range = max(ABV)-min(ABV), count = n())
+
+ggplot(data = beers_breweries, aes(x = ABV)) +
+  geom_histogram(bins = 30, fill = "lightblue", color = "black") +
+  labs(title = "Histogram of ABV",
+       x = "ABV",
+       y = "Frequency")
+
+boxplot(beers_breweries$ABV, main="Box Plot of ABV", ylab="Values")
+
+```
+
+
+## 7.	
+
+Is there an apparent relationship between the bitterness of the beer and its alcoholic content? Draw a scatter plot.  Make your best judgment of a relationship and EXPLAIN your answer.
+
+ Answer - We can see a positive linear correlation (0.76) with IBU and ABV.
+ Answer - As the bitterness is higher, the ABV usually increases as well.
+ Answer - This makes sense since the higher percentage of alcohol will most likely make your drink more bitter
+
+```{r}
+
+#Question - Relationship between ABV and IBV(Bitterness)?
+beers_breweries %>%
+  filter(!is.na(ABV) & !is.na(IBU))%>%
+  ggplot(aes(x=IBU, y=ABV))+
+  geom_point()+
+  geom_smooth(method="lm", col = "blue")+ #adding a blue linera regression line (lm) to the plot
+  ggtitle("Relationship between IBU and ABV")
+
+# Correlation 
+beers_breweries_complete <- beers_breweries[complete.cases(beers_breweries),]
+cor(x = beers_breweries_complete$ABV, y = beers_breweries_complete$IBU)
+```
+
+## 8.	
+
+Budweiser would also like to investigate the difference with respect to IBU and ABV between IPAs (India Pale Ales) and other types of Ale (any beer with “Ale” in its name other than IPA).  You decide to use KNN classification to investigate this relationship.  Provide statistical evidence one way or the other. You can of course assume your audience is comfortable with percentages … KNN is very easy to understand conceptually. 
+In addition, while you have decided to use KNN to investigate this relationship (KNN is required) you may also feel free to supplement your response to this question with any other methods or techniques you have learned.  Creativity and alternative solutions are always encouraged.  
+
+
+```{r}
+beers_breweries$Ale <- as.integer(sapply(beers_breweries$BeerName, function(text) grepl("\\bale\\b", tolower(text), ignore.case = TRUE)))
+
+beers_breweries$IPA <- as.integer(sapply(beers_breweries$BeerName, function(text) grepl("\\bipa\\b", tolower(text), ignore.case = TRUE)))
+
+# If both Ale and IPA are FALSE(0), remove the obs
+KNN_data <- beers_breweries %>% filter(Ale != 0 | IPA != 0)
+
+# Only keep the necessary columns
+KNN_data <- KNN_data %>% select(ABV, IBU, IPA)
+
+
+## Fit KNN 
+# # Define predictors and label variable
+library(class)
+predictors <- c("ABV", "IBU")
+label <- "IPA"
+
+# Create vectors to store k and accuracies
+k_values <- 1:50
+accuracies <- numeric(50)
+
+# Perform k-NN for k = 1 to 90
+for (k in k_values) {
+  set.seed(123)  # Set seed for reproducibility
+  idx <- sample(1:nrow(KNN_data), size = 0.7 * nrow(KNN_data))  # 70% training, 30% test
+  training_set <- KNN_data[idx, ]
+  test_set <- KNN_data[-idx, ]
+  
+  knn_model <- knn(training_set[predictors], 
+                   test_set[predictors], 
+                   training_set[,label], 
+                   k = k)
+  
+  # Calculate accuracy
+  accuracy <- mean(knn_model == test_set$IPA)
+  
+  accuracies[k] <- accuracy
+}
+
+# Create a plot of k versus accuracy
+plot(k_values, accuracies, type = "l", col = "blue", 
+     xlab = "k", ylab = "Accuracy", main = "k vs. Accuracy")
+
+# Find the k with highest accuracy
+best_k <- which.max(accuracies)
+cat("Best k:", best_k, "\n")
+cat("Accuracy with best k:", accuracies[best_k], "\n") #k=3
+
+# Create the dataset that contain a fixed ABV(median) and three different IBU(min, median, max)
+summary(KNN_data$ABV)
+summary(KNN_data$IBU)
+test_new1 <- data.frame(ABV = c(0.059, 0.059, 0.059),
+                        IBU = c(7, 44, 138))
+test_new1
+
+# Predict the survival probabilities with the optimal k
+knn.pred.test.new1 <- knn(KNN_data[predictors], test_new1, 
+                          KNN_data[,label], k = 3, prob = TRUE)
+
+# Check the probabilities
+probs <- attr(knn.pred.test.new1, "prob")
+probs <- ifelse(knn.pred.test.new1 == 1, probs, 1 - probs)
+probs
+
+
+# Create the dataset that contain a fixed IBU(median) and three different ABV(min, median, max)
+test_new2 <- data.frame(ABV = c(0.035, 0.059, 0.128),
+                        IBU = c(44, 44, 44))
+test_new2
+
+# Predict the survival probabilities with the optimal k
+knn.pred.test.new2 <- knn(KNN_data[predictors], test_new2, 
+                         KNN_data[,label], k = 3, prob = TRUE)
+
+# Check the probabilities
+probs <- attr(knn.pred.test.new2, "prob")
+probs <- ifelse(knn.pred.test.new2 == 1, probs, 1 - probs)
+probs
+
+```
+
+
+Conclusion: IPAs tend to have larger IBU than Ales while there is no much difference in terms of ABV. 
+
+## 9.
+
+The company might be interested in which beer style has the largest IBU in average, they can then use this information to introduce new beers with similar or contrasting bitterness levels to meet varying consumer preferences.
+
+```{r}
+# Calculate summary statistics for the IBU levels by beer style. 
+ibu_summary <- beers_breweries %>%
+  group_by(Style) %>%
+  summarize(avg_ibu = mean(IBU, na.rm = TRUE), 
+            min_ibu = min(IBU, na.rm = TRUE), 
+            max_ibu = max(IBU, na.rm = TRUE))
+
+# Identify styles with unique bitterness levels
+unique_bitterness_styles <- ibu_summary %>%
+  arrange(desc(avg_ibu)) %>%
+  head(5)  # Get the top 5 styles with highest average IBU
+
+unique_bitterness_styles
+```
+
