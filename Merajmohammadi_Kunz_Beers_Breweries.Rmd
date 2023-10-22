@@ -1,6 +1,6 @@
 ---
 title: "Project1"
-author: "Merajmohammadi and Kunz"
+author: "Mohammad Merajmohammadi and Trevor Kunz"
 date: "2023-10-06"
 last update: "2023-10-21"
 output: html_document
@@ -16,9 +16,11 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(gridExtra)
 library(ggplot2)
-#library(plotly)
-#install.packages("stats")
+library(plotly)
 library(stats)
+library(caret)
+library(e1071)
+library(class)
 ```
 
 
@@ -75,6 +77,7 @@ head(beers_breweries, 6)
 
 # Last 6 obs
 tail(beers_breweries, 6)
+beers_breweries %>% ggplot(aes(x = ABV, y = IBU))+ geom_point()
 ```
 
 ## 3.	
@@ -312,109 +315,213 @@ cor(x = beers_breweries_complete$ABV, y = beers_breweries_complete$IBU)
 Budweiser would also like to investigate the difference with respect to IBU and ABV between IPAs (India Pale Ales) and other types of Ale (any beer with “Ale” in its name other than IPA).  You decide to use KNN classification to investigate this relationship.  Provide statistical evidence one way or the other. You can of course assume your audience is comfortable with percentages … KNN is very easy to understand conceptually. 
 In addition, while you have decided to use KNN to investigate this relationship (KNN is required) you may also feel free to supplement your response to this question with any other methods or techniques you have learned.  Creativity and alternative solutions are always encouraged.  
 
+KNN K = 5, 15 and Naive Bayes were used to help us better understand this relationship between IPA and other ales.
+80.6% Accuracy with a Naïve Bayes Model
+82.0% Accuracy relative to 5 nearest neighbors
+80.0% Accuracy relative to 15 nearest neighbors
+
 
 ```{r}
-beers_breweries$Ale <- as.integer(sapply(beers_breweries$BeerName, function(text) grepl("\\bale\\b", tolower(text), ignore.case = TRUE)))
-
-beers_breweries$IPA <- as.integer(sapply(beers_breweries$BeerName, function(text) grepl("\\bipa\\b", tolower(text), ignore.case = TRUE)))
-
-# If both Ale and IPA are FALSE(0), remove the obs
-KNN_data <- beers_breweries %>% filter(Ale != 0 | IPA != 0)
-
-# Only keep the necessary columns
-KNN_data <- KNN_data %>% select(ABV, IBU, IPA)
+#separating the Ales out of the data
+ales = beers_breweries[grepl("\\bale\\b", beers_breweries$Style, ignore.case = TRUE) | grepl("\\bale\\b", beers_breweries$BeerName, ignore.case = TRUE) | grepl("ipa", beers_breweries$Style, ignore.case = TRUE) | grepl("ipa", beers_breweries$BeerName, ignore.case = TRUE),]
 
 
-## Fit KNN 
-# # Define predictors and label variable
-library(class)
-predictors <- c("ABV", "IBU")
-label <- "IPA"
+ales$IPA = grepl("IPA", ales$BeerName, ignore.case = TRUE) | grepl("IPA", ales$Style, ignore.case = TRUE)
+ales$IPA = as.factor(ales$IPA)
 
-# Create vectors to store k and accuracies
-k_values <- 1:50
-accuracies <- numeric(50)
+#Iterating the model to explore the relationship between IPA and other ALES
 
-# Perform k-NN for k = 1 to 90
-for (k in k_values) {
-  set.seed(123)  # Set seed for reproducibility
-  idx <- sample(1:nrow(KNN_data), size = 0.7 * nrow(KNN_data))  # 70% training, 30% test
-  training_set <- KNN_data[idx, ]
-  test_set <- KNN_data[-idx, ]
-  
-  knn_model <- knn(training_set[predictors], 
-                   test_set[predictors], 
-                   training_set[,label], 
-                   k = k)
-  
-  # Calculate accuracy
-  accuracy <- mean(knn_model == test_set$IPA)
-  
-  accuracies[k] <- accuracy
+#setting a variable for the count of iterations
+iter = 100
+
+#variables to hold the results
+accnb = matrix(nrow = iter)
+acck5 = matrix(nrow = iter)
+acck15 = matrix(nrow = iter)
+sensnb = matrix(nrow = iter)
+sensk5 = matrix(nrow = iter)
+sensk15 = matrix(nrow = iter)
+specnb = matrix(nrow = iter)
+speck5 = matrix(nrow = iter)
+speck15 = matrix(nrow = iter)
+
+for (s in 1:iter){
+  #commenting out set seed first to see if I need to reset the seed each iteration
+    set.seed(s)
+    trainIndices = sample(seq(1:length(ales$ABV)),round(.7*length(ales$IBU)))
+    trainAles = ales[trainIndices,]
+    testAles = ales[-trainIndices,]
+    
+    
+    #naive bayes with Test and Train Data
+    #creating a naive bayes model to predict whether we have 
+    
+    model = naiveBayes(trainAles[,c("ABV", "IBU")],trainAles$IPA,laplace = .1)
+    #table(predict(model,testAles[,c("ABV", "IBU")],testAles$IPA, type = "raw"))
+    CM = confusionMatrix(table(predict(model,testAles[,c("ABV", "IBU")]), testAles$IPA))
+    accnb[s] = CM$overall[c("Accuracy")]
+    sensnb[s] = CM$byClass[c("Sensitivity")]
+    specnb[s] = CM$byClass[c("Specificity")]
+    
+    #KNN K = 5
+    classifyAles = knn(trainAles[,c("IBU","ABV")], testAles[,c("IBU","ABV")], trainAles$IPA, prob = TRUE, k = 5)
+    k5 = confusionMatrix(classifyAles, testAles$IPA)
+    
+    acck5[s] = k5$overall[c("Accuracy")]
+    sensk5[s] = k5$byClass[c("Sensitivity")]
+    speck5[s] = k5$byClass[c("Specificity")]
+    
+    #KNN K = 15
+    classifyAles = knn(trainAles[,c("IBU","ABV")], testAles[,c("IBU","ABV")], trainAles$IPA, prob = TRUE, k = 15)
+    k15 = confusionMatrix(classifyAles, testAles$IPA)
+    acck15[s] = k15$overall[c("Accuracy")]
+    sensk15[s] = k15$byClass[c("Sensitivity")]
+    speck15[s] = k15$byClass[c("Specificity")]
 }
 
-# Create a plot of k versus accuracy
-plot(k_values, accuracies, type = "l", col = "blue", 
-     xlab = "k", ylab = "Accuracy", main = "k vs. Accuracy")
 
-# Find the k with highest accuracy
-best_k <- which.max(accuracies)
-cat("Best k:", best_k, "\n")
-cat("Accuracy with best k:", accuracies[best_k], "\n") #k=3
+#calculate mean accuracy
+headers = c("Accuracy", "Sensitivity", "Specificity")
+nb = c(colMeans(accnb), colMeans(sensnb), colMeans(specnb))
+k5 = c(colMeans(acck5), colMeans(sensk5), colMeans(speck5))
+k15 = c(colMeans(acck15), colMeans(sensk15), colMeans(speck15))
 
-# Create the dataset that contain a fixed ABV(median) and three different IBU(min, median, max)
-summary(KNN_data$ABV)
-summary(KNN_data$IBU)
-test_new1 <- data.frame(ABV = c(0.059, 0.059, 0.059),
-                        IBU = c(7, 44, 138))
-test_new1
+# Create the data frames
+df_nb <- data.frame(NBCategory = headers, Values = nb)
+df_k5 <- data.frame(K5Category = headers, Values = k5)
+df_k15 <- data.frame(K15Category = headers, Values = k15)
 
-# Predict the survival probabilities with the optimal k
-knn.pred.test.new1 <- knn(KNN_data[predictors], test_new1, 
-                          KNN_data[,label], k = 3, prob = TRUE)
-
-# Check the probabilities
-probs <- attr(knn.pred.test.new1, "prob")
-probs <- ifelse(knn.pred.test.new1 == 1, probs, 1 - probs)
-probs
+#Combine the 3 data frames into 1 data frame
+result <- cbind(df_nb, df_k5, df_k15)[, c(2,4,6)]
+rownames(result) <- c("nb","knn(k=5)","knn(k=15)")
+colnames(result) <- c("Accuracy", "Sensitivity", "Specificity")
+result
 
 
-# Create the dataset that contain a fixed IBU(median) and three different ABV(min, median, max)
-test_new2 <- data.frame(ABV = c(0.035, 0.059, 0.128),
-                        IBU = c(44, 44, 44))
-test_new2
-
-# Predict the survival probabilities with the optimal k
-knn.pred.test.new2 <- knn(KNN_data[predictors], test_new2, 
-                         KNN_data[,label], k = 3, prob = TRUE)
-
-# Check the probabilities
-probs <- attr(knn.pred.test.new2, "prob")
-probs <- ifelse(knn.pred.test.new2 == 1, probs, 1 - probs)
-probs
-
+#graphing IBU and ABV for Ales for IPA
+ales %>% ggplot(aes(x = ABV, y = IBU, color = IPA))+ geom_point() + ggtitle("Scatterplot of IPA's vs Non-IPA Ales")
 ```
-
-
-Conclusion: IPAs tend to have larger IBU than Ales while there is not much difference in terms of ABV. 
-
-## 9.
-
-The company might be interested in which beer style has the largest IBU in average, they can then use this information to introduce new beers with similar or contrasting bitterness levels to meet varying consumer preferences.
 
 ```{r}
-# Calculate summary statistics for the IBU levels by beer style. 
-ibu_summary <- beers_breweries %>%
-  group_by(Style) %>%
-  summarize(avg_ibu = mean(IBU, na.rm = TRUE), 
-            min_ibu = min(IBU, na.rm = TRUE), 
-            max_ibu = max(IBU, na.rm = TRUE))
+#Distribution of style within TX, CA, CO. Choosing 3 with many breweries to test through KNN and NB
 
-# Identify styles with unique bitterness levels
-unique_bitterness_styles <- ibu_summary %>%
-  arrange(desc(avg_ibu)) %>%
-  head(5)  # Get the top 5 styles with highest average IBU
+TexasBB = beers_breweries %>% filter(str_trim(State) == "TX")
+CaliforniaBB = beers_breweries %>% filter(str_trim(State) == "CA")
+ColoradoBB = beers_breweries %>% filter(str_trim(State) == "CO")
+summary(beers_breweries$State)
 
-unique_bitterness_styles
+#adding columns in BB for TX, CA, CO, SD and not each of those states
+beers_breweries = beers_breweries %>% mutate(TX = ifelse(grepl("TX", str_trim(State), ignore.case = TRUE), "Y", "N")) %>% mutate(TX = factor(TX, levels = c("Y", "N")))
+
+beers_breweries = beers_breweries %>% mutate(CA = ifelse(grepl("CA", str_trim(State), ignore.case = TRUE), "Y", "N")) %>% mutate(CA = factor(CA, levels = c("Y", "N")))
+
+beers_breweries = beers_breweries %>% mutate(CO = ifelse(grepl("CO", str_trim(State), ignore.case = TRUE), "Y", "N")) %>% mutate(CO = factor(CO, levels = c("Y", "N")))
+
+beers_breweries = beers_breweries %>% mutate(SD = ifelse(grepl("SD", str_trim(State), ignore.case = TRUE), "Y", "N")) %>% mutate(SD = factor(SD, levels = c("Y", "N")))
+
+
+head(beers_breweries)
+tail(beers_breweries)
 ```
+
+##9.	
+
+Knock their socks off!  Find one other useful inference from the data that you feel Budweiser may be able to find value in.  You must convince them why it is important and back up your conviction with appropriate statistical evidence. 
+
+By using KNN K = 3 we explored which beers are most likely to be mistaken for beer belonging to another State. The False positives in this analysis could help identify market opportunities to move products between states to help gain more market share.
+
+```{r}
+#9 KNN and NB to see whether predict whether drinks are similar to ones in other markets
+
+#trimming State in BB dataset
+beers_breweries$State = str_trim(beers_breweries$State)
+beers_breweries$BeerName = as.character(beers_breweries$BeerName)
+#setting a variable for the count of iterations
+iter = 100
+
+#variables to hold the results
+TXFP = list()
+CAFP = list()
+COFP = list()
+SDFP = list()
+
+#iterate through 100 iterations
+for (s in 1:iter) {
+  set.seed(s)
+  trainIndices = sample(seq(1:length(beers_breweries$ABV)), round(0.7 * length(beers_breweries$IBU)))
+  trainStates = beers_breweries[trainIndices,]
+  testStates = beers_breweries[-trainIndices,]
+
+  # KNN K = 3
+  classifyStates = knn(trainStates[, c("IBU", "ABV")], testStates[, c("IBU", "ABV")], trainStates$TX, prob = TRUE, k = 3)
+  kTX = confusionMatrix(classifyStates, testStates$TX)
+
+  #captures indices of Y in the model table and the test set
+  L1 = grep("Y", classifyStates)
+  L2 = grep("Y", testStates$TX)
+  # Create a list of indices in L1 that are not in L2
+  FP = list(setdiff(L1, L2))
+  
+  #save False Positives to TXFP
+  for (i in FP) {
+  TXFP[[s]] = (testStates$BeerName[i])
+  }
+
+  #KNN for CA Data
+  classifyStates = knn(trainStates[, c("IBU", "ABV")], testStates[, c("IBU", "ABV")], trainStates$CA, prob = TRUE, k = 3)
+  kCA = confusionMatrix(classifyStates, testStates$CA)
+
+  #captures indices of Y in the model table and the test set
+  L1 = grep("Y", classifyStates)
+  L2 = grep("Y", testStates$CA)
+  # Create a list of indices in L1 that are not in L2
+  FP = list(setdiff(L1, L2))
+    
+  #save False Positives to CAFP
+  for (i in FP) {
+  CAFP[[s]] = (testStates$BeerName[i])
+    }
+
+  #KNN for CO data
+  classifyStates = knn(trainStates[, c("IBU", "ABV")], testStates[, c("IBU", "ABV")], trainStates$CO, prob = TRUE, k = 3)
+  kCO = confusionMatrix(classifyStates, testStates$CO)
+  
+  #captures indices of Y in the model table and the test set
+  L1 = grep("Y", classifyStates)
+  L2 = grep("Y", testStates$CO)
+  # Create a list of indices in L1 that are not in L2
+  FP = list(setdiff(L1, L2))
+    
+  #save False Positives to COFP
+  for (i in FP) {
+  COFP[[s]] = (testStates$BeerName[i])
+    }
+  
+}
+
+#List out the false positives into a data frame
+TXFP = unlist(TXFP)
+TXTable = as.data.frame(table(TXFP))
+TXTableR = TXTable %>% filter(Freq >= 10)
+
+#List out the false positives into a data frame
+CAFP = unlist(CAFP)
+CATable = as.data.frame(table(CAFP))
+CATableR = CATable %>% filter(Freq >= 10)
+
+#List out the false positives into a data frame
+COFP = unlist(COFP)
+COTable = as.data.frame(table(COFP))
+COTableR = COTable %>% filter(Freq >= 10)
+
+TXTableR %>% ggplot(aes(x = TXFP, y = Freq, fill = "orange")) + geom_bar(stat = "identity") + ggtitle("Texas False Positive Drinks") + xlab("Drink") + ylab("Frequency") + theme(axis.text.x = element_text(angle = 90, hjust = 1)) + guides(fill = FALSE) + geom_text(aes(label = Freq), vjust = -0.5, size = 3)
+
+CATableR %>% ggplot(aes(x = CAFP, y = Freq, fill = "orange")) + geom_bar(stat = "identity") + ggtitle("California False Positive Drinks") + xlab("Drink") + ylab("Frequency") + theme(axis.text.x = element_text(angle = 90, hjust = 1)) + guides(fill = FALSE) + geom_text(aes(label = Freq), vjust = -0.5, size = 3)
+
+COTableR %>% ggplot(aes(x = COFP, y = Freq, fill = "orange")) + geom_bar(stat = "identity") + ggtitle("Colorado False Positive Drinks") + xlab("Drink") + ylab("Frequency") + theme(axis.text.x = element_text(angle = 90, hjust = 1)) + guides(fill = FALSE) + geom_text(aes(label = Freq), vjust = -0.5, size = 3)
+
+```
+Conclusion:
+Based on this analysis and classifications, we recommend introducing Dale's Pale Ale into the Colorado Market, Tin Roof Watermelon Wheat into the Texas Market, and 1327 Pod's ESB into California's market. As these beers fit the customer preferences of ABV and IBU within each of the given states based on the data from our predictions.
+
 
