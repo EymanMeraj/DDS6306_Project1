@@ -1,6 +1,6 @@
 ---
 title: "Project1"
-author: "Meraj"
+author: "Merajmohammadi and Kunz"
 date: "2023-10-06"
 last update: "2023-10-21"
 output: html_document
